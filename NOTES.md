@@ -33,3 +33,125 @@ Website: https://quickfixengine.org/c/documentation/
     target_link_libraries(main PRIVATE quickfix)
     ```
 * First param in target_link_libraries should be equal to first param in add_executable(FixServer main.cpp) i.e. your application/executable name
+
+## Implementing quickfix/Application.h
+
+To have a FIX application up and running, a few methods have to be overriden.
+
+Start Date: March 2 2024
+Target End Date: March 10 2024
+
+```
+  virtual void onCreate( const SessionID& ) = 0;
+  
+  /// Notification of a session successfully logging on
+  virtual void onLogon( const SessionID& ) = 0;
+  
+  /// Notification of a session logging off or disconnecting
+  virtual void onLogout( const SessionID& ) = 0;
+  
+  /// Notification of admin message being sent to target
+  virtual void toAdmin( Message&, const SessionID& ) = 0;
+  
+  /// Notification of app message being sent to target
+  virtual void toApp( Message&, const SessionID& )
+  QUICKFIX_THROW( DoNotSend ) = 0;
+  
+  /// Notification of admin message being received from target
+  virtual void fromAdmin( const Message&, const SessionID& )
+  QUICKFIX_THROW( FieldNotFound, IncorrectDataFormat, IncorrectTagValue, RejectLogon ) = 0;
+  
+  /// Notification of app message being received from target
+  virtual void fromApp( const Message&, const SessionID& )
+  QUICKFIX_THROW( FieldNotFound, IncorrectDataFormat, IncorrectTagValue, UnsupportedMessageType ) = 0;
+```
+
+### Class Inheritance Issue
+
+```
+// quickfix library:
+  class Application {
+  public:
+    virtual void onLogon( const SessionID& ) = 0;
+  }
+
+// my project:
+
+MyApplication.h
+  class MyApplication
+    : FIX::Application,
+      FIX::MessageCracker
+  {
+      void onLogout( const FIX::SessionID& sessionID ) {}
+  }
+
+MyApplication.c
+
+  #include "MyApplication.h"
+  
+  void MyApplication::onLogout( const FIX::SessionID& sessionID ) {
+      std::cout << "Log out from: " << sessionID << std::endl;
+  }
+  
+IDE is going to complain "Redefinition of 'onLogout'"
+```
+
+correction:
+```
+// incorrect
+void MyApplication::onLogout( const FIX::SessionID& sessionID ) {}
+-->
+// correct
+void MyApplication::onLogout( const FIX::SessionID& sessionID );
+```
+Definition vs declaration
+* The former is a definition, so if you specify that in the header file you've provided an implementation, and if you try to do ```void MyApplication::onLogout ( ... ) {} ``` again in the source file (MyApplication.cpp) then you are redefining the function 
+* Latter is declaration, so implementation / definition can now go in the source file
+
+### Exception Handling syntax
+
+In Utility.h of quickfix library
+```
+#define QUICKFIX_THROW(...) noexcept
+```
+This is an example of a macro
+* ```#define``` is a directive / preprocessor command specifying that this is a macro
+* ```(...)``` means the macro is going to behave like a function and will take a varying number of arguments (the ellipsis)
+* ```noexcept``` means function will not throw an exception (for compiler optimization)
+
+#### quickfix/Application.h
+```
+virtual void toApp( Message&, const SessionID& )
+EXCEPT ( DoNotSend ) = 0;
+```
+
+#### Except.h
+```
+// definition of EXCEPT macro
+#define EXCEPT(...)
+```
+
+#### Exception.h
+```
+// definition of DoNotSend
+/// Indicates user does not want to send a message
+struct DoNotSend : public Exception
+{
+  DoNotSend( const std::string& what = "" )
+    : Exception( "Do Not Send Message", what ) {}
+};
+
+/// Base QuickFIX exception type.
+struct Exception : public std::logic_error
+{
+  Exception( const std::string& type, const std::string& detail )
+  : std::logic_error( detail.size() ? type + ": " + detail : type),
+    type( type ), detail( detail )
+  {}
+  ~Exception() NOEXCEPT {}
+
+  std::string type;
+  std::string detail;
+};
+
+```
