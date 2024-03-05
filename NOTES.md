@@ -121,14 +121,17 @@ This is an example of a macro
 
 #### quickfix/Application.h
 ```
-virtual void toApp( Message&, const SessionID& )
-EXCEPT ( DoNotSend ) = 0;
+void toApp( Message& message, const SessionID& sessionID )
+QUICKFIX_THROW( DoNotSend )
 ```
 
-#### Except.h
+#### Utility.h
 ```
-// definition of EXCEPT macro
-#define EXCEPT(...)
+#ifdef __cpp_noexcept_function_type
+#define QUICKFIX_THROW(...) noexcept
+#else
+#define QUICKFIX_THROW(...) throw(__VA_ARGS__)
+#endif
 ```
 
 #### Exception.h
@@ -155,3 +158,49 @@ struct Exception : public std::logic_error
 };
 
 ```
+
+### Starting the application
+
+#### Class inheritance issue
+When creating class that inherits from another class:
+```
+class  <derived_class_name> : <access-specifier> <base_class_name>
+```
+Access specifier --> if not specified it's private by default
+
+IDE complaining:
+```
+class MyApplication
+    : FIX::Application, --> implicitly private
+      FIX::MessageCracker
+Cannot cast 'MyApplication' to its private base class 'FIX::Application'
+```
+
+SocketAcceptor expects FIX::Application. We're passing in MyApplication class which inherits from FIX::Application, but we have implicitly specified access specifier as private so we cannot cast it to base class FIX::Application
+```
+FIX::SocketAcceptor acceptor( application, storeFactory, settings, logFactory );
+```
+
+#### Creating a socket
+```
+FIX::FileStoreFactory storeFactory( settings );
+FIX::ScreenLogFactory logFactory( settings );
+FIX::SocketAcceptor acceptor( application, storeFactory, settings, logFactory );
+
+acceptor.start();
+```
+
+#### FIX::ConfigError: Configuration failed: No sessions defined for acceptor
+Set a few breakpoints and found issues in Acceptor.cpp class when initializing the acceptor.
+Root cause was because in the config file:
+```
+[DEFAULT]
+ConnectionType=acceptor
+```
+ConnectionType was specified to be initiator instead of acceptor. So there were no configs for acceptors
+
+#### FIX::ConfigError: Configuration failed: DataDictionary not defined
+
+Question - if I wanted to debug DataDictionary.cpp but that's in the library --> can i set a breakpoint there? how does it work? 
+/Users/maggietsui/CLionProjects/vcpkg/buildtrees/quickfix/src/v1.15.1-b3b42dfc02.clean/src/C++/Acceptor.cpp
+

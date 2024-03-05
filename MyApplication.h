@@ -10,8 +10,8 @@
 #include "quickfix/Utility.h"
 
 class MyApplication
-    : FIX::Application,
-      FIX::MessageCracker
+    : public FIX::Application,
+      public FIX::MessageCracker
 {
     void onCreate( const FIX::SessionID& sessionID ) {}
     void onLogon( const FIX::SessionID& sessionID );
